@@ -1,0 +1,5 @@
+/.idea/
+/vendor/
+/tools/cache/
+/tools/infection/
+/test-proj/

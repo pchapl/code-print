@@ -1,0 +1,41 @@
+{
+    "name": "pchapl/code-print",
+    "type": "library",
+    "autoload": {
+        "psr-4": {
+            "Pchapl\\CodePrint\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Pchapl\\CodePrint\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Pavel Chaplygin",
+            "email": "mail@pchapl.dev"
+        }
+    ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "git@github.com:pchapl/code-gen.git"
+        }
+    ],
+    "require": {
+        "php": "^8.0|^8.1",
+        "nikic/php-parser": "^4.13",
+        "pchapl/code-gen": "^0.1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5",
+        "phpstan/phpstan": "^1.5",
+        "infection/infection": "^0.26.8"
+    },
+    "config": {
+        "allow-plugins": {
+            "infection/extension-installer": true
+        }
+    }
+}
