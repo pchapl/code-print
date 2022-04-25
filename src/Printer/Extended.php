@@ -6,43 +6,46 @@ namespace Pchapl\CodePrint\Printer;
 
 use PhpParser\Node;
 use PhpParser\Node\Stmt;
+use PhpParser\Node\Stmt\ClassConst;
+use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Property;
+use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\PrettyPrinter\Standard;
 
 final class Extended extends Standard
 {
-    /** @phpstan-param array<Node> $nodes */
-    protected function pMaybeMultiline(array $nodes, bool $trailingComma = false, ?bool &$enable = false): string
+    private const MAX_LINE_LENGTH = 120;
+
+    /**
+     * @param Node\Param[] $params
+     */
+    private function maybeMultilineParams(array $params, string $stringBeforeParams): string
     {
-        if ($enable === false) {
-            return parent::pMaybeMultiline($nodes, $trailingComma);
+        $lengthBeforeParams = strlen(substr(strrchr($stringBeforeParams, "\n") ?: " $stringBeforeParams", 1));
+
+        $maybeMultiline = $this->pMaybeMultiline($params, true);
+
+        $parentheses = 2;
+        $length = $lengthBeforeParams + $parentheses + strlen($maybeMultiline);
+
+        if ($length <= self::MAX_LINE_LENGTH || str_contains($maybeMultiline, "\n")) {
+            return $maybeMultiline;
         }
 
-        if ($this->hasNodeWithComments($nodes)) {
-            $enable = true;
-            return $this->pCommaSeparatedMultiline($nodes, $trailingComma) . $this->nl;
-        }
-
-        $oneLine = $this->pCommaSeparated($nodes);
-
-        if (strlen($oneLine) + $this->indentLevel > 120) {
-            $enable = true;
-            return $this->pCommaSeparatedMultiline($nodes, true) . $this->nl;
-        }
-
-        $enable = false;
-
-        return $oneLine;
+        return $this->pCommaSeparatedMultiline($params, true) . $this->nl;
     }
 
-    protected function pStmt_ClassMethod(Stmt\ClassMethod $node): string
+    protected function pStmt_ClassMethod(ClassMethod $node): string
     {
         $attrGroups = $this->pAttrGroups($node->attrGroups);
         $modifiers = $this->pModifiers($node->flags);
         $function = 'function ' . ($node->byRef ? '&' : '') . $node->name;
-        $params = '(' . $this->pMaybeMultiline($node->params, true, $multiline) . ')';
+
+        $params = '(' . $this->maybeMultilineParams($node->params, "$attrGroups$modifiers$function") . ')';
+
         $returnType = null !== $node->returnType ? ': ' . $this->p($node->returnType) : '';
 
-        $bodySeparator = $multiline ? ' ' : $this->nl;
+        $bodySeparator = str_contains($params, "\n") ? ' ' : $this->nl;
 
         $body = null !== $node->stmts
             ? $bodySeparator . '{' . $this->pStmts($node->stmts) . $this->nl . '}'
@@ -52,48 +55,47 @@ final class Extended extends Standard
     }
 
     /** @phpstan-param array<Node> $nodes */
-    protected function pStmtsSplitted(array $nodes, bool $indent = true): string
+    private function pStmtsSplit(array $nodes): string
     {
-        if ($indent) {
-            $this->indent();
-        }
+        $this->indent();
 
-        $first = true;
+        $stmts = array_map(
+            fn (Node $node): string => (
+                $node->getComments()
+                    ? $this->nl . $this->pComments($node->getComments())
+                    : ''
+                )
+                . $this->nl
+                . $this->p($node),
+            $nodes,
+        );
 
-        $result = '';
-        foreach ($nodes as $node) {
-            if ($first) {
-                $first = false;
-            } else {
-                $result .= "\n";
-            }
-            $comments = $node->getComments();
-            if ($comments) {
-                $result .= $this->nl . $this->pComments($comments);
-                if ($node instanceof Stmt\Nop) {
-                    continue;
-                }
-            }
+        $this->outdent();
 
-            $result .= $this->nl . $this->p($node);
-        }
-
-        if ($indent) {
-            $this->outdent();
-        }
-
-        return $result;
+        return implode("\n", $stmts);
     }
 
-    /** @phpstan-param string $afterClassToken */
-    protected function pClassCommon(Stmt\Class_ $node, mixed $afterClassToken): string
+    private function isNodeIsClassSubNode(Node $node): bool
     {
-        return $this->pAttrGroups($node->attrGroups, $node->name === null)
-            . $this->pModifiers($node->flags)
-            . 'class' . $afterClassToken
-            . (null !== $node->extends ? ' extends ' . $this->p($node->extends) : '')
-            . (!empty($node->implements) ? ' implements ' . $this->pCommaSeparated($node->implements) : '')
-            . $this->nl . '{' . $this->pStmtsSplitted($node->stmts) . $this->nl . '}';
+        $classSubNodes = [TraitUse::class, ClassConst::class, Property::class, ClassMethod::class];
+        foreach ($classSubNodes as $subNode) {
+            if ($node instanceof $subNode) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function pStmts(array $nodes, bool $indent = true): string
+    {
+        foreach ($nodes as $node) {
+            if ($this->isNodeIsClassSubNode($node)) {
+                return $this->pStmtsSplit($nodes);
+            }
+        }
+
+        return parent::pStmts($nodes, $indent);
     }
 
     protected function pStmt_Class(Stmt\Class_ $node): string

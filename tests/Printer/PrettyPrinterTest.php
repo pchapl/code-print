@@ -7,13 +7,17 @@ namespace Pchapl\CodePrint\Tests\Printer;
 use Pchapl\CodeGen\Entity\Dto;
 use Pchapl\CodePrint\Printer\PrettyPrinter;
 use PhpParser\Comment;
+use PhpParser\Node\Attribute;
+use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Param;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\UnionType;
 use PHPUnit\Framework\TestCase;
 
 final class PrettyPrinterTest extends TestCase
@@ -189,5 +193,149 @@ PHP;
         $str = $this->printer->print(new Dto(new Class_('tc', ['stmts' => $stmts])));
 
         self::assertSame(self::EXPECTED_WITH_LONG_LIST, $str);
+    }
+
+    private const EXPECTED_WITH_LONG_FIELDS = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+class tc
+{
+    public function __construct(
+        protected readonly string|resource $parameterWithLongName1,
+        protected readonly string|resource $parameterWithLongName2,
+        protected readonly string|resource $parameterWithLongName3,
+    ) {
+    }
+}
+
+PHP;
+
+    public function testPrintLongFields(): void
+    {
+        $readonlyParam = static fn (string $name): Param => new Param(
+            var:   new Variable($name),
+            type:  new UnionType([new Identifier('string'), new Identifier('resource')]),
+            flags: Class_::MODIFIER_PROTECTED | Class_::MODIFIER_READONLY,
+        );
+
+        $stmts = [
+            new ClassMethod(
+                '__construct',
+                [
+                    'flags' => Class_::MODIFIER_PUBLIC,
+                    'params' => array_map(
+                        $readonlyParam,
+                        [
+                            'parameterWithLongName1',
+                            'parameterWithLongName2',
+                            'parameterWithLongName3',
+                        ],
+                    ),
+                ],
+            ),
+        ];
+
+        $str = $this->printer->print(new Dto(new Class_('tc', ['stmts' => $stmts])));
+
+        self::assertSame(self::EXPECTED_WITH_LONG_FIELDS, $str);
+    }
+
+    private const EXPECTED_WITH_LONG_FIELDS_80 = <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+class tc
+{
+    public function __construct(
+        private string $id,
+        private string $name,
+        private int $index,
+        private int $oneMoreField4294967296,
+    ) {
+    }
+
+    #[TestAttr]
+    public function foo(string $parameterWithLongName1, string $parameterWithLongName2, string $parameterWithLongName3_)
+    {
+    }
+
+    #[TestAttr]
+    public function bar(
+        string $parameterWithLongName1,
+        string $parameterWithLongName2,
+        string $parameterWithLongName3__,
+    ) {
+    }
+}
+
+PHP;
+
+    public function testPrintLongFields80(): void
+    {
+        $param = static fn (string $name, string $type): Param => new Param(
+            var:   new Variable($name),
+            type:  $type,
+            flags: Class_::MODIFIER_PRIVATE,
+        );
+
+        $stmts = [
+            new ClassMethod(
+                '__construct',
+                [
+                    'flags' => Class_::MODIFIER_PUBLIC,
+                    'params' => array_map(
+                        $param,
+                        ['id', 'name', 'index', 'oneMoreField4294967296'],
+                        ['string', 'string', 'int', 'int'],
+                    ),
+                ],
+            ),
+            new ClassMethod(
+                'foo',
+                [
+                    'flags' => Class_::MODIFIER_PUBLIC,
+                    'params' => [
+                        // line length = 120
+                        new Param(new Variable('parameterWithLongName1'), type: 'string'),
+                        new Param(new Variable('parameterWithLongName2'), type: 'string'),
+                        new Param(new Variable('parameterWithLongName3_'), type: 'string'),
+                    ],
+                    'attrGroups' => [
+                        new AttributeGroup(
+                            [
+                                new Attribute(new Name('TestAttr')),
+                            ]
+                        )
+                    ],
+                ],
+            ),
+            new ClassMethod(
+                'bar',
+                [
+                    'flags' => Class_::MODIFIER_PUBLIC,
+                    'params' => [
+                        // line length = 121
+                        new Param(new Variable('parameterWithLongName1'), type: 'string'),
+                        new Param(new Variable('parameterWithLongName2'), type: 'string'),
+                        new Param(new Variable('parameterWithLongName3__'), type: 'string'),
+                    ],
+                    'attrGroups' => [
+                        new AttributeGroup(
+                            [
+                                new Attribute(new Name('TestAttr')),
+                            ]
+                        )
+                    ],
+                ],
+            ),
+        ];
+
+        $entity = new Dto(new Class_('tc', ['stmts' => $stmts]));
+        $str = $this->printer->print($entity);
+
+        self::assertSame(self::EXPECTED_WITH_LONG_FIELDS_80, $str);
     }
 }
